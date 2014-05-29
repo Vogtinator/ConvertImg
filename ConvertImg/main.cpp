@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
     QFileInfo info(argv[1]);
     lines << ("//Generated from " + info.fileName());
 
-    lines << QString("uint16_t %0_data[] = {").arg(info.baseName());
+    lines << QString("static uint16_t %0_data[] = {").arg(info.baseName());
 
     for(int y = 0; y < i.height(); y++)
     {
@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
 
     lines << QString("};");
 
-    lines << QString("TEXTURE ") + info.baseName() + "{";
+    lines << QString("static TEXTURE ") + info.baseName() + "{";
     lines << QString(".width = %0,").arg(i.width());
     lines << QString(".height = %0,").arg(i.height());
     lines << QString(".bitmap = %0_data };").arg(info.baseName());
