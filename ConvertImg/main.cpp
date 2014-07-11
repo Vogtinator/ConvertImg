@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
             QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
             for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
             {
-                if(qAlpha(*scanline) >= 0xF0)
+                if(qAlpha(*scanline) >= 0x80)
                     color_present[toRGB16(*scanline)] = true;
             }
         }
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
         QString line;
         for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
         {
-            uint16_t color = (qAlpha(*scanline) >= 0xF0) ? toRGB16(*scanline) : unused_color;
+            uint16_t color = (qAlpha(*scanline) >= 0x80) ? toRGB16(*scanline) : unused_color;
             line += QString("0x%0, ").arg(color, 0, 16);
         }
         lines << line;
