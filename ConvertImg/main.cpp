@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     i = i.convertToFormat(QImage::Format_ARGB32);
 
     uint16_t unused_color = 0x0000;
-    if(has_transparency)
+    if(has_transparency || format == "n2dlib")
     {
         bool color_present[0x10000]{false};
         for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
