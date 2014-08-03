@@ -32,8 +32,10 @@ int main(int argc, char *argv[])
 
     QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,n2dlib", "format");
     QCommandLineOption opt_var_name("var", "The name of the global array", "name");
+    QCommandLineOption opt_notstatic("not-static", "Don't make the variables static");
     parser.addOption(opt_format);
     parser.addOption(opt_var_name);
+    parser.addOption(opt_notstatic);
 
     parser.process(app);
 
@@ -59,6 +61,7 @@ int main(int argc, char *argv[])
     //Finally do stuff: Load the image and convert it to RGB8565
     QFileInfo file_info(parser.positionalArguments()[0]);
     QString var_name = parser.isSet(opt_var_name) ? parser.value(opt_var_name) : file_info.baseName();
+    bool notstatic = parser.isSet(opt_notstatic);
 
     QImage i = QImage(parser.positionalArguments()[0]);
     if(i.isNull())
@@ -103,12 +106,16 @@ int main(int argc, char *argv[])
     QStringList lines;
     lines << ("//Generated from " + file_info.fileName() + " (output format: " + format + ")");
 
+    QString str_static = "static ";
+    if(notstatic)
+        str_static = "";
+
     if(format == "ngl")
-        lines << QString("static uint16_t %0_data[] = {").arg(var_name);
+        lines << QString("%0uint16_t %1_data[] = {").arg(str_static).arg(var_name);
     else if(format == "nsdl")
-        lines << QString("static uint16_t %0[] = {0x2a01,\n%1,\n%2,\n0x0000,").arg(var_name).arg(i.width()).arg(i.height());
+        lines << QString("%0uint16_t %0[] = {0x2a01,\n%1,\n%2,\n0x0000,").arg(str_static).arg(var_name).arg(i.width()).arg(i.height());
     else //n2dlib
-        lines << QString("static uint16_t %0[] = {%1,\n%2,\n0x%3,").arg(var_name).arg(i.width()).arg(i.height()).arg(unused_color, 0, 16);
+        lines << QString("%0uint16_t %0[] = {%1,\n%2,\n0x%3,").arg(var_name).arg(str_static).arg(i.width()).arg(i.height()).arg(unused_color, 0, 16);
 
     for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
     {
@@ -126,7 +133,7 @@ int main(int argc, char *argv[])
 
     if(format == "ngl")
     {
-        lines << QString("static TEXTURE ") + var_name + "{";
+        lines << str_static + QString("TEXTURE ") + var_name + "{";
         lines << QString(".width = %0,").arg(i.width());
         lines << QString(".height = %0,").arg(i.height());
         lines << QString(".bitmap = %0_data };").arg(var_name);
