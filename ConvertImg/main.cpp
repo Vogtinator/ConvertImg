@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     parser.addPositionalArgument("image", "The image to be converted");
     parser.addPositionalArgument("output", "Write to this file instead of stdout (optional)");
 
-    QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,ngl2d,n2dlib", "format");
+    QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,ngl2d,n2dlib,python", "format");
     QCommandLineOption opt_var_name("var", "The name of the global array", "name");
     QCommandLineOption opt_notstatic("not-static", "Don't make the variables static");
     parser.addOption(opt_format);
@@ -46,9 +46,9 @@ int main(int argc, char *argv[])
         return 1;
     }
     QString format = parser.value(opt_format);
-    if(format != "nsdl" && format != "ngl" && format != "ngl2d" && format != "n2dlib")
+    if(format != "nsdl" && format != "ngl" && format != "ngl2d" && format != "n2dlib" && format != "python")
     {
-        std::cerr << "Only nsdl, ngl or n2dlib as format allowed!" << std::endl;
+        std::cerr << "Only nsdl, ngl, ngl2d, n2dlib or python as format allowed!" << std::endl;
         return 1;
     }
 
@@ -122,43 +122,71 @@ int main(int argc, char *argv[])
             unused_color = i - color_present;
     }
 
-    //Last but not least output in C array format
     QStringList lines;
-    lines << ("//Generated from " + file_info.fileName() + " (output format: " + format + ")");
 
-    QString str_static = "static ";
-    if(notstatic)
-        str_static = "";
-
-    if(format == "ngl" || format == "ngl2d")
-        lines << QString("%0uint16_t %1_data[] = {").arg(str_static).arg(var_name);
-    else if(format == "nsdl")
-        lines << QString("%0uint16_t %0[] = {0x2a01,\n%1,\n%2,\n0x0000,").arg(str_static).arg(var_name).arg(i.width()).arg(i.height());
-    else //n2dlib
-        lines << QString("%0uint16_t %0[] = {%1,\n%2,\n0x%3,").arg(var_name).arg(str_static).arg(i.width()).arg(i.height()).arg(unused_color, 0, 16);
-
-    for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
+    if(format == "python")
     {
-        QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
-        QString line;
-        for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
+        QString transparency = "None";
+        if(has_transparency)
+            transparency = QString("0x%0").arg(unused_color, 0, 16);
+
+        lines << ("# Generated from " + file_info.fileName());
+        lines << "from nsp import Texture";
+        lines << QString("%0 = Texture(%1, %2, %3)").arg(var_name).arg(i.width()).arg(i.height()).arg(transparency);
+
+        QByteArray ba;
+
+        for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
         {
-            uint16_t color = (qAlpha(*scanline) >= 0x80) ? toRGB16(*scanline) : unused_color;
-            line += QString("0x%0, ").arg(color, 0, 16);
+            QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
+            for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
+            {
+                uint16_t color = (qAlpha(*scanline) >= 0x80) ? toRGB16(*scanline) : unused_color;
+                ba.append(color & 0xFF);
+                ba.append(color >> 8);
+            }
         }
-        lines << line;
+
+        lines << QString("%0.setData('%1')").arg(var_name).arg(QString::fromLocal8Bit(ba.toBase64()));
     }
-
-    lines << QString("};");
-
-    if(format == "ngl" || format == "ngl2d")
+    else
     {
-        lines << str_static + QString("TEXTURE ") + var_name + "{";
-        lines << QString(".width = %0,").arg(i.width());
-        lines << QString(".height = %0,").arg(i.height());
-        lines << QString(".has_transparency = %0,").arg(has_transparency ? "true" : "false");
-        lines << QString(".transparent_color = %0,").arg(unused_color);
-        lines << QString(".bitmap = %0_data };").arg(var_name);
+        lines << ("//Generated from " + file_info.fileName() + " (output format: " + format + ")");
+
+        QString str_static = "static ";
+        if(notstatic)
+            str_static = "";
+
+        if(format == "ngl" || format == "ngl2d")
+            lines << QString("%0uint16_t %1_data[] = {").arg(str_static).arg(var_name);
+        else if(format == "nsdl")
+            lines << QString("%0uint16_t %0[] = {0x2a01,\n%1,\n%2,\n0x0000,").arg(str_static).arg(var_name).arg(i.width()).arg(i.height());
+        else if(format == "n2dlib")
+            lines << QString("%0uint16_t %0[] = {%1,\n%2,\n0x%3,").arg(var_name).arg(str_static).arg(i.width()).arg(i.height()).arg(unused_color, 0, 16);
+
+        for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
+        {
+            QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
+            QString line;
+            for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
+            {
+                uint16_t color = (qAlpha(*scanline) >= 0x80) ? toRGB16(*scanline) : unused_color;
+                line += QString("0x%0, ").arg(color, 0, 16);
+            }
+            lines << line;
+        }
+
+        lines << QString("};");
+
+        if(format == "ngl" || format == "ngl2d")
+        {
+            lines << str_static + QString("TEXTURE ") + var_name + "{";
+            lines << QString(".width = %0,").arg(i.width());
+            lines << QString(".height = %0,").arg(i.height());
+            lines << QString(".has_transparency = %0,").arg(has_transparency ? "true" : "false");
+            lines << QString(".transparent_color = %0,").arg(unused_color);
+            lines << QString(".bitmap = %0_data };").arg(var_name);
+        }
     }
 
     if(parser.positionalArguments().size() >= 2)
