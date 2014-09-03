@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     parser.addPositionalArgument("image", "The image to be converted");
     parser.addPositionalArgument("output", "Write to this file instead of stdout (optional)");
 
-    QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,n2dlib", "format");
+    QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,ngl2d,n2dlib", "format");
     QCommandLineOption opt_var_name("var", "The name of the global array", "name");
     QCommandLineOption opt_notstatic("not-static", "Don't make the variables static");
     parser.addOption(opt_format);
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     QString format = parser.value(opt_format);
-    if(format != "nsdl" && format != "ngl" && format != "n2dlib")
+    if(format != "nsdl" && format != "ngl" && format != "ngl2d" && format != "n2dlib")
     {
         std::cerr << "Only nsdl, ngl or n2dlib as format allowed!" << std::endl;
         return 1;
@@ -78,13 +78,37 @@ int main(int argc, char *argv[])
     if(has_transparency || format == "n2dlib")
     {
         bool color_present[0x10000]{false};
-        for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
+
+        //nGL needs a transparent_color of 0x0 for nglDrawTriangle.
+        //Replace black by dark grey
+        if(format == "ngl")
         {
-            QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
-            for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
+            for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
             {
-                if(qAlpha(*scanline) >= 0x80)
-                    color_present[toRGB16(*scanline)] = true;
+                QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
+                for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
+                {
+                    if(qAlpha(*scanline) >= 0x80)
+                    {
+                        uint16_t color = toRGB16(*scanline);
+                        if(color == 0x0)
+                            *scanline = qRgb(0b1000, 0b100, 0b1000);
+
+                        color_present[toRGB16(*scanline)] = true;
+                    }
+                }
+            }
+        }
+        else
+        {
+            for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
+            {
+                QRgb *scanline = reinterpret_cast<QRgb*>(i.scanLine(y));
+                for(unsigned int x = 0; x < static_cast<unsigned int>(i.width()); ++x, ++scanline)
+                {
+                    if(qAlpha(*scanline) >= 0x80)
+                        color_present[toRGB16(*scanline)] = true;
+                }
             }
         }
 
@@ -96,10 +120,6 @@ int main(int argc, char *argv[])
         }
         else
             unused_color = i - color_present;
-
-        //nGL treats only 0x0000 as transparent, because it's much faster (3d only, 2d unaffected)
-        if(format == "ngl" && unused_color != 0x0000)
-            std::cerr << "Warning: Transparency won't work if used as 3d texture!" << std::endl;
     }
 
     //Last but not least output in C array format
@@ -110,7 +130,7 @@ int main(int argc, char *argv[])
     if(notstatic)
         str_static = "";
 
-    if(format == "ngl")
+    if(format == "ngl" || format == "ngl2d")
         lines << QString("%0uint16_t %1_data[] = {").arg(str_static).arg(var_name);
     else if(format == "nsdl")
         lines << QString("%0uint16_t %0[] = {0x2a01,\n%1,\n%2,\n0x0000,").arg(str_static).arg(var_name).arg(i.width()).arg(i.height());
@@ -131,11 +151,13 @@ int main(int argc, char *argv[])
 
     lines << QString("};");
 
-    if(format == "ngl")
+    if(format == "ngl" || format == "ngl2d")
     {
         lines << str_static + QString("TEXTURE ") + var_name + "{";
         lines << QString(".width = %0,").arg(i.width());
         lines << QString(".height = %0,").arg(i.height());
+        lines << QString(".has_transparency = %0,").arg(has_transparency ? "true" : "false");
+        lines << QString(".transparent_color = %0,").arg(unused_color);
         lines << QString(".bitmap = %0_data };").arg(var_name);
     }
 
