@@ -160,9 +160,9 @@ int main(int argc, char *argv[])
         if(format == "ngl" || format == "ngl2d")
             lines << QString("%0uint16_t %1_data[] = {").arg(str_static).arg(var_name);
         else if(format == "nsdl")
-            lines << QString("%0uint16_t %0[] = {0x2a01,\n%1,\n%2,\n0x0000,").arg(str_static).arg(var_name).arg(i.width()).arg(i.height());
+            lines << QString("%0uint16_t %1[] = {0x2a01,\n%2,\n%3,\n0x0000,").arg(str_static).arg(var_name).arg(i.width()).arg(i.height());
         else if(format == "n2dlib")
-            lines << QString("%0uint16_t %0[] = {%1,\n%2,\n0x%3,").arg(var_name).arg(str_static).arg(i.width()).arg(i.height()).arg(unused_color, 0, 16);
+            lines << QString("%0uint16_t %1[] = {%2,\n%3,\n0x%4,").arg(var_name).arg(str_static).arg(i.width()).arg(i.height()).arg(unused_color, 0, 16);
 
         for(unsigned int y = 0; y < static_cast<unsigned int>(i.height()); ++y)
         {
