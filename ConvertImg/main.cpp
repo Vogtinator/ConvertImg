@@ -17,6 +17,7 @@
 #include <QStringList>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QBuffer>
 
 constexpr uint16_t toRGB16(QRgb rgb)
 {
@@ -28,7 +29,7 @@ int main(int argc, char *argv[])
     QCoreApplication app(argc, argv);
 
     QCoreApplication::setApplicationName("ConvertImg");
-    QCoreApplication::setApplicationVersion("0.9");
+    QCoreApplication::setApplicationVersion("1.0");
 
     //Parse the commandline
     QCommandLineParser parser;
@@ -40,12 +41,14 @@ int main(int argc, char *argv[])
     parser.addPositionalArgument("image", "The image to be converted");
     parser.addPositionalArgument("output", "Write to this file instead of stdout (optional)");
 
-    QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,ngl2d,n2dlib,python", "format");
+    QCommandLineOption opt_format("format", "The format to convert to. Available options: nsdl,ngl,ngl2d,n2dlib,python,jpgdata", "format");
     QCommandLineOption opt_var_name("var", "The name of the global array", "name");
     QCommandLineOption opt_notstatic("not-static", "Don't make the variables static");
+    QCommandLineOption opt_image_compression("compression", "From 0 (small compressed files) to 100 (large uncompressed files)", "-1");
     parser.addOption(opt_format);
     parser.addOption(opt_var_name);
     parser.addOption(opt_notstatic);
+    parser.addOption(opt_image_compression);
 
     parser.process(app);
 
@@ -56,15 +59,28 @@ int main(int argc, char *argv[])
         return 1;
     }
     QString format = parser.value(opt_format);
-    if(format != "nsdl" && format != "ngl" && format != "ngl2d" && format != "n2dlib" && format != "python")
+    if(format != "nsdl" && format != "ngl" && format != "ngl2d" && format != "n2dlib" && format != "python" && format != "jpgdata")
     {
-        std::cerr << "Only nsdl, ngl, ngl2d, n2dlib or python as format allowed!" << std::endl;
+        std::cerr << "Only nsdl, ngl, ngl2d, n2dlib, python, or jpgdata as format allowed!" << std::endl;
         return 1;
     }
 
     if(parser.positionalArguments().size() == 0)
     {
         std::cerr << "No input file provided!" << std::endl;
+        return 1;
+    }
+
+    if(parser.isSet(opt_image_compression) && format != "jpgdata")
+    {
+        std::cerr << "Compression is only valid when using jpgdata as the format" << std::endl;
+        return 1;
+    }
+
+    int compression = parser.value(opt_image_compression).toInt();
+    if(compression < -1 || compression > 100)
+    {
+        std::cerr << "Compression values must be between 0 (small compressed files) and 100 (large uncompressed files); or -1 for default" << std::endl;
         return 1;
     }
 
@@ -158,6 +174,30 @@ int main(int argc, char *argv[])
         }
 
         lines << QString("%0.setData('%1')").arg(var_name).arg(QString::fromLocal8Bit(ba.toBase64()));
+    }
+    else if( format == "jpgdata")
+    {
+        QByteArray array;
+        QBuffer buffer(&array);
+        i.save(&buffer, "JPEG", compression);
+
+        lines << ("//Generated from " + file_info.fileName() + " (output format: " + format + ")");
+
+        QString str_static = "static ";
+        if(notstatic)
+            str_static = "";
+
+        lines << QString("%0unsigned char %1[] = {").arg(str_static).arg(var_name);
+        QString line;
+        char *data = array.data();
+        for(int i=0; i<array.length(); i++){
+            unsigned char n = static_cast<unsigned char>(*data);
+            line += QString("0x%0, ").arg(n, 0, 16);
+            data++;
+        }
+        lines << line;
+
+        lines << QString("};");
     }
     else
     {
